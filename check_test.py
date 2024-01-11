@@ -8,15 +8,16 @@ from selenium.webdriver import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+from urllib3.exceptions import InsecureRequestWarning
+from urllib.request import urlretrieve
+from uuid import uuid4
  
 import datetime
 import requests 
-import pandas as pd
-import numpy as np 
+import pandas as pd 
 import time
-import openpyxl
+import os
 import xml.etree.ElementTree as ET
-from urllib3.exceptions import InsecureRequestWarning
 import sys
 if sys.version_info[0] == 3:
     from urllib.request import urlopen
@@ -39,10 +40,17 @@ chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
 # Chrome WebDriver 초기화
 driver = webdriver.Chrome(options=chrome_options)
 
-#반드시 더보기한 상태의 OASIS url 넣어야함
-url = 'https://www.nl.go.kr/oasis/contents/O2010000.do?page=1&pageUnit=100&schM=search_list&schType=disa&schTab=list&schIsFa=ISU-000000000387&facetKind=01'
+url = input("url 입력 | OASIS 더보기+수집일 정렬 누른 상태에서 unit 100 권장 |")
+
+#'https://www.nl.go.kr/oasis/contents/O4010000.do?page=1&pageUnit=100&schM=search_list&schType=disa&schTab=list&schIsFa=ISU-000000000379&facetKind=01&ordFld=regDay&ordBy=desc'
 #xml 파싱용
+
 CDRW_url = 'https://www.nl.go.kr/oasis/common/mods_view_xml.do?contentsId='
+savePath = r'/Users/user/Pictures/OASIS/'
+#썸네일, 임시로 전역 변수
+ThumbnailList = list()
+#컬렉션 썸네일 필터용
+word = "FILE-"
 
 #페이지 열고 
 driver.get(url)
@@ -89,29 +97,14 @@ def searchCDRW(KeyList):
     print("CDRW 값 크롤링 완료")
     return CDRW_keys
 
-
-
-try: 
-
-    element = WebDriverWait(driver, 5).until(
-        EC.presence_of_all_elements_located((By.CSS_SELECTOR,'#paging_btn_go_page'))
-    )
-    #CNTS를 가져올 List 초기화
-    CNTS_key = []
-
-    #찾으려는 페이지 끝 번호 가져오는데 / 있어서 자르고 형변환 시킴, 두자리수까지 대응
-    TotalCount = int(driver.find_element(By.CLASS_NAME,'TotalCount').text[-2:])
-    action = driver.find_element(By.CSS_SELECTOR, 'body')
-    
-    print('총 페이지 수: ', TotalCount)
+def searchCNTS(TotalCnt, CNTSkeyList):
     
     for i in range(1,999):
         
-        #9썸네일 문제로 변경, img src로 CNTS 코드 추출
-        #img_CNTS = driver.find_elements(By.CSS_SELECTOR,'div > div.imgBox > img')
-        
         #타이틀 onclick에서 CNTS 값 가져옴
         title_CNTS = driver.find_elements(By.CSS_SELECTOR, 'div > div.textBox > div.resultTitle > p > a')
+        #썸네일 가져옴
+        img_CNTS = driver.find_elements(By.CSS_SELECTOR,'div > div.imgBox > img')
         doScrollDown(5)
 
         #컬렉션 내 CNTS 코드 추출해서 List 저장
@@ -121,16 +114,19 @@ try:
             # ' 로 문자열 나눔
             val1 = tmp_key.split("'")
             #CNTS 값이 있는 3번 리스트만 빼옴
-            CNTS_key.append(val1[3])
-            
-            #9썸네일 문제로 변경, url 뒤에서 16자리만 끌어오면 됨
-            #CNTS_key.append(tmp_key[-16:])             
+            CNTSkeyList.append(val1[3])
+        
+        #썸네일 수집 
+        for x in img_CNTS:
+            tmp_src = x.get_attribute('src')
+            ThumbnailList.append(tmp_src)
+        #ListImg = searchImg(ListImg)       
         
         #N초간 스크롤
         print('i 루프 [',i,']회차 돎')
 
         #마지막 페이지에는 '다음 페이지' 버튼이 없음
-        if i < TotalCount:
+        if i < TotalCnt:
             #다음 페이지 버튼을 찾음
             next_btn = driver.find_element(By.CSS_SELECTOR, "p > a.btn-paging.next")
             next_btn.click()
@@ -138,14 +134,43 @@ try:
             time.sleep(3)
 
         #1page 밖에 없으면 예외처리 
-        if TotalCount == 1:
+        if TotalCnt == 1:
             break
 
         #마지막 페이지까지 수집하고 루프 끝냄
-        if i == TotalCount:
-            print("크롤링 끝")
+        if i == TotalCnt:
+            print("CNTS 크롤링 끝")
             break
-        
+
+    return CNTSkeyList
+
+
+#썸네일 다운로드
+def downloadThumbnail(ImgList,CNTSkeyList):
+    print("썸네일 네이밍 및 다운로드 중")
+    i = 0
+    for link in ImgList:
+        urlretrieve(link,savePath+f'{CNTSkeyList[i]}.jpg')
+        i += 1
+        time.sleep(0.3)
+
+
+
+try: 
+    element = WebDriverWait(driver, 5).until(
+        EC.presence_of_all_elements_located((By.CSS_SELECTOR,'#paging_btn_go_page'))
+    )
+    #CNTS를 가져올 List 초기화
+    CNTS_key = list()
+
+    #찾으려는 페이지 끝 번호 가져오는데 / 있어서 자르고 형변환 시킴, 두자리수까지 대응
+    TotalCount = int(driver.find_element(By.CLASS_NAME,'TotalCount').text[-2:])
+    action = driver.find_element(By.CSS_SELECTOR, 'body')
+    
+    print('총 페이지 수: ', TotalCount)
+    CNTS_key = searchCNTS(TotalCount, CNTS_key)
+    
+
 
 except TimeoutException:
     print('해당 페이지 정보 없음')   
@@ -164,10 +189,17 @@ finally:
     #CDRW 찾는 함수, CDWR 리스트로 받고  
     CDRW_final = searchCDRW(CNTS_final)
     
-    #9 역시 중복값 제거
-    CDRW_final = list(dict.fromkeys(CDRW_final))
+    #뉴스때문에 중복제거 
+    #CDRW_final = list(dict.fromkeys(CDRW_final))
     print("CDRW 중복 제거(CNTS랑 동일함) : ",len(CDRW_final),'\n')
 
+    #컬렉션 썸네일 중복제거 (Python comprehension 사용)
+    ThumbnailList = [item for item in ThumbnailList if word not in item]
+
+    #썸네일 다운로드
+    downloadThumbnail(ThumbnailList,CNTS_final)
+
+    
     #리스트를 엑셀저장
     #final_df = pd.DataFrame(final, columns=['CNTS'])
     final_df = pd.DataFrame({'CNTS': CNTS_final, 'CDRW': CDRW_final})
