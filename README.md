@@ -8,6 +8,7 @@ https://www.nl.go.kr/oasis/
 - 표준부호/번호 CNTS 코드 수집
 - CNTS 별 대응하는 CDRW 코드를 XML에서 파싱
 - 웹사이트 별 썸네일 수집 후 CNTS 코드 부여
+- 썸네일 다운로드(140*95px)
 - CNTS, CDRW 리스트 csv 파일로 저장
 
 ## 개발환경
