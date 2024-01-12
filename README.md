@@ -12,8 +12,8 @@ https://www.nl.go.kr/oasis/
 - 최종 CNTS, CDRW 리스트 csv 파일로 저장
 
 ### 특징
-- BytesIO: 썸네일 이미지 리사이징(140*95px)
-- ThreadPoolExecutor: 검색 속도 향상 
+- Pillow: 썸네일 이미지 리사이징(140*95px)
+- ThreadPoolExecutor: 처리 속도 향상 
 - pandas DataFrame: 크롤링 결과 csv 저장 
 
 ## 개발환경
