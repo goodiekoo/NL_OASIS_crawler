@@ -13,8 +13,9 @@ https://www.nl.go.kr/oasis/
 
 ### 특징
 - Pillow: 썸네일 이미지 리사이징(140*95px)
-- ThreadPoolExecutor: 처리 속도 향상 
-- pandas DataFrame: 크롤링 결과 csv 저장 
+- ThreadPoolExecutor: 병렬 처리로 크롤링 속도 향상 
+- Pandas DataFrame: 크롤링 결과 csv 저장
+- Namespace MODS XML 파싱
 
 ## 개발환경
 - Python 3.12(64 bit)
