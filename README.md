@@ -15,7 +15,7 @@ https://www.nl.go.kr/oasis/
 - Pillow: 썸네일 이미지 리사이징(140*95px)
 - ThreadPoolExecutor: 병렬 처리로 크롤링 속도 향상 
 - Pandas DataFrame: 크롤링 결과 csv 저장
-- Namespace MODS XML 파싱
+- Namespace로 웹 "MODS 보기" XML 파일 파싱
 
 ## 개발환경
 - Python 3.12(64 bit)
