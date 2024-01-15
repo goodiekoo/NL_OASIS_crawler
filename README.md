@@ -12,6 +12,7 @@ https://www.nl.go.kr/oasis/
 - 최종 CNTS, CDRW 리스트 csv 파일로 저장
 
 ### 특징
+- Selenium: OASIS 웹사이트 CNTS, CDRW(XML), 썸네일 크롤링 
 - Pillow: 썸네일 이미지 리사이징(140*95px)
 - ThreadPoolExecutor: 병렬 처리로 크롤링 속도 향상 
 - Pandas DataFrame: 크롤링 결과 csv 저장
@@ -20,5 +21,4 @@ https://www.nl.go.kr/oasis/
 ## 개발환경
 - Python 3.12(64 bit)
 - Chrome WebDriver (120.0.6099.109 기준)
-- Selenium 
-- IDE: VS code
+- IDE: VS code 1.85.1
