@@ -44,7 +44,7 @@ session.mount('http://', adapter)
 session.mount('https://', adapter)
 
 #크롤링 할 url, 최종버전에서는 입력받음
-url = 'https://www.nl.go.kr/oasis/contents/O2010000.do?page=1&pageUnit=500&schM=search_list&schType=disa&schTab=list&schIsFa=ISU-000000000376&facetKind=01'
+url = 'https://www.nl.go.kr/oasis/contents/O2010000.do?page=1&pageUnit=1000&schM=search_list&schType=disa&schTab=list&schIsFa=ISU-000000000376&facetKind=01'
 
 #xml 파싱용
 CDRW_url = 'https://www.nl.go.kr/oasis/common/mods_view_xml.do?contentsId='
@@ -99,6 +99,7 @@ def fetchCDRWkey(site_url):
     namespace_map = {"mods": "http://www.loc.gov/mods/v3"}
     xpath_expression = ".//mods:recordIdentifier"
     try:
+        #웹 XML 불러오는거라 재활용 불가능...
         with session.get(site_url, verify=False) as response:
             response.raise_for_status()
             xtree = ET.fromstring(response.content)
@@ -133,7 +134,6 @@ def searchCDRW(KeyList):
     CDRW_keys= [future.result() for future in as_completed(futures) if future.result() is not None]
     print("CDRW 값 크롤링 완료")
     return CDRW_keys
-
 
 #CNTS 수집
 def OASISCrawler(driver, CNTSkeyList):
@@ -214,11 +214,10 @@ def downloadThumbnail(ImgList,CNTSkeyList):
     
     with ThreadPoolExecutor(max_workers=5) as executor:
         args_list = zip(ImgList, CNTSkeyList)
-        executor.map(download_and_process_img, args_list)
+        executor.map(lambda args: download_and_process_img(args), args_list)
 
 #main
 def main():
-    
     try:
         driver = SeleniumDriver()
         driver.setup()
