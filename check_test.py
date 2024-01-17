@@ -13,6 +13,8 @@ from chromedriver_autoinstaller import install
 from PIL import Image
 from io import BytesIO
 from selenium.webdriver.support import expected_conditions as EC
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from urllib3.exceptions import InsecureRequestWarning
 from lxml.html import fromstring
 from concurrent.futures import ThreadPoolExecutor, wait 
@@ -20,7 +22,7 @@ from concurrent.futures import as_completed, TimeoutError
 import ssl 
 import logging
 import datetime
-import requests 
+import requests
 import pandas as pd 
 import time
 import os
@@ -34,11 +36,21 @@ ssl._create_default_https_context = ssl._create_unverified_context
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-url = 'https://www.nl.go.kr/oasis/contents/O2010000.do?page=1&pageUnit=100&schM=search_list&schType=disa&schTab=list&schIsFa=ISU-000000000385&facetKind=01'
+#requests 속도 향상
+session = requests.Session()
+retries = Retry(total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
+adapter = HTTPAdapter(max_retries=retries)
+session.mount('http://', adapter)
+session.mount('https://', adapter)
+
+#크롤링 할 url, 최종버전에서는 입력받음
+url = 'https://www.nl.go.kr/oasis/contents/O2010000.do?page=1&pageUnit=500&schM=search_list&schType=disa&schTab=list&schIsFa=ISU-000000000376&facetKind=01'
+
 #xml 파싱용
 CDRW_url = 'https://www.nl.go.kr/oasis/common/mods_view_xml.do?contentsId='
+#cnts_df 저장경로
 savePath = r'/Users/user/Pictures/OASIS/'
-#컬렉션 썸네일 필터용
+#컬렉션 썸네일 필터용 키워드 (중복)
 word = "FILE-"
 
 #로딩 최적화 CLASS
@@ -82,54 +94,53 @@ def doScrollDown(driver, whileSeconds, sleep_duration=1):
     except TimeoutException:
         print("스크롤 시간초과. 일부 데이터가 누락되었을지도 모름")
 
+def fetchCDRWkey(site_url):
+    #네임스페이스 prefix 써서 XPATH 오류 방지 xml:mods
+    namespace_map = {"mods": "http://www.loc.gov/mods/v3"}
+    xpath_expression = ".//mods:recordIdentifier"
+    try:
+        with session.get(site_url, verify=False) as response:
+            response.raise_for_status()
+            xtree = ET.fromstring(response.content)
+            record_identifier_element = xtree.find(xpath_expression, namespaces=namespace_map)
+
+            if record_identifier_element is not None:
+                return record_identifier_element.text
+            else:
+                print(f"해당 XML에서 CDRW을 찾을 수 없음 : {site_url}")
+                return None
+    except (requests.RequestException, ET.ParseError) as e :
+        print(f"{site_url} 에서 오류 {e} 발생 ")
+        return None
+
 #CNTS 값 토대로 CDRW 가져오기 
 def searchCDRW(KeyList):
     #CNTS를 key로 CDRW 값을 가져올 List 초기화
     CDRW_keys = list()
 
-    #네임스페이스 prefix 써서 XPATH 오류 방지 xml:mods
-    namespace_map = {"mods": "http://www.loc.gov/mods/v3"}
-    xpath_expression = ".//mods:recordIdentifier"
-
     #xml 사이트 url 합체
-    CDRW_siteUrl = [CDRW_url + key for key in KeyList]
+    #CDRW_siteUrl = [CDRW_url + key for key in KeyList]
+    #lambda-map으로 바꿈
+    CDRW_siteUrl = list(map(lambda key: CDRW_url + key, KeyList))
+
+    #ThreadPool병렬처리
+    print("CDRW url 작업 완료, xml 크롤링 시작")
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = list(map(lambda site_url: executor.submit(fetchCDRWkey, site_url),CDRW_siteUrl))
+        #futures = [executor.submit(fetchCDRWkey, site_url) for site_url in CDRW_siteUrl]
     
-    try:
-        print("Step2. CDRW url 준비 완료, CDRW 검색 시작")
-        
-        #url로 CDRW 찾기
-        for site_url in CDRW_siteUrl:
-            with requests.get(site_url, verify=False) as response:
-                response.raise_for_status()
-            
-            #XML 파일 파싱
-            xtree = ET.fromstring(response.content)
-            #CDRW 가지고 있는 XPATH 찾기
-            record_identifier_element = xtree.find(xpath_expression, namespaces=namespace_map)
-        
-            #엑세스 전 텍스트 찾았는지 확인
-            if record_identifier_element is not None:
-                value = record_identifier_element.text
-                CDRW_keys.append(value)
-            else:
-                print("!CDRW를 못찾음!")
-        
-        print("CDRW 값 크롤링 완료")
-        return CDRW_keys
-    
-    #예외처리
-    except (requests.RequestException, ET.ParseError) as e:
-        print(f"Error: {e}")
-        print(f"Response content: {response.content}")
-        raise
+    #결과 받아오기
+    CDRW_keys= [future.result() for future in as_completed(futures) if future.result() is not None]
+    print("CDRW 값 크롤링 완료")
+    return CDRW_keys
+
 
 #CNTS 수집
 def OASISCrawler(driver, CNTSkeyList):
-    
     driver.get(url)
     
-    #이동버튼 나올때까지 최대 30초 대기 (보통 맨 나중에 나옴)
-    WebDriverWait(driver, 30).until(
+    #이동버튼 나올때까지 최대 20초 대기 (보통 맨 나중에 나옴)
+    WebDriverWait(driver, 20).until(
         EC.presence_of_all_elements_located((By.CSS_SELECTOR,'#paging_btn_go_page'))
     )
     
@@ -154,7 +165,7 @@ def OASISCrawler(driver, CNTSkeyList):
         ThumbnailList.extend(tmp_srcs)
         
         #N초간 스크롤
-        doScrollDown(driver, 3)
+        doScrollDown(driver, 5)
         print(f'현재 {i} 페이지 스크롤 완료')
 
         #마지막 페이지까지 수집하고 루프 종료
@@ -166,31 +177,33 @@ def OASISCrawler(driver, CNTSkeyList):
         next_btn = driver.find_element(By.CSS_SELECTOR, "p > a.btn-paging.next")
         next_btn.click()
         print(f'{i}회차, 다음 페이지 이동')
-        time.sleep(2)
+        time.sleep(5)
 
     return CNTSkeyList
 
-#썸네일 리사이징 + CNTS 네이밍 + 다운로드
+#썸네일 리사이징 + CNTS 네이밍
 def download_and_process_img(args):
     link, cnts_key = args
     try:
-        res = requests.get(link)
-        res.raise_for_status()  # Check if the request was successful
-        img_content = BytesIO(res.content)
-        img = Image.open(img_content)
+        with session.get(link, timeout=10) as res:
+            res.raise_for_status()  # Check if the request was successful
+            img_content = BytesIO(res.content)
+            img = Image.open(img_content)
     
-        # PNG인 경우 처리 
-        if img.mode == 'RGBA':
-            img = img.convert('RGB')
+            # PNG인 경우 처리 
+            if img.mode == 'RGBA':
+                img = img.convert('RGB')
         
-        resized_img = img.resize(target_size)
-        resized_img.save(savePath + f'{cnts_key}.jpg')
-        print(f"썸네일 {cnts_key} 다운 및 리사이징 성공 \n")
+            resized_img = img.resize(target_size)
+            resized_img.save(savePath + f'{cnts_key}.jpg')
+            print(f"썸네일 {cnts_key} 다운 및 리사이징 성공 \n")
 
-
+    except requests.RequestException as req_exc:
+        print(f"Request exception occurred for {cnts_key}: {req_exc}")
     except Exception as e:
         print(f"다운로드, 변환, 리사이징 오류 발생 {cnts_key}: {e}")
 
+#썸네일 다운로드
 def downloadThumbnail(ImgList,CNTSkeyList):
     global target_size
     target_size = (140, 95) 
@@ -222,18 +235,18 @@ def main():
             CNTS_key = executor.submit(OASISCrawler, driver.driver, CNTS_key)
 
             try:
-                wait([CNTS_key],timeout=10)
-                # CNTS 값 받아오고 10초 대기
+                wait([CNTS_key],timeout=3)
+                # CNTS 값 받아오고 3초 대기
                 CNTS_final = CNTS_key.result()
                 # Step2. [SubThread] (1) CDRW 찾기 
                 tmp = executor.submit(searchCDRW,CNTS_final) 
-                wait([tmp], timeout=10)
-                # CDRW 값 받아오고 10초 대기
+                wait([tmp], timeout=3)
+                # CDRW 값 받아오고 3초 대기
                 CDRW_final = tmp.result()
                 #컬렉션 썸네일 중복제거 (Python comprehension 사용)
                 ThumbnailList = [item for item in ThumbnailList if word not in item]
-                #Step2. [SubThread] (2) 썸네일 CNTS 네이밍 및 다운로드
-                executor.submit(downloadThumbnail,ThumbnailList,CNTS_final)
+                #Step2. [SubThread] (2) 썸네일 CNTS 네이밍 및 다운로드 (시간 소요 커서 map+lambda)
+                executor.map(lambda args: downloadThumbnail(*args), zip([ThumbnailList],[CNTS_final]))
 
             except TimeoutError:
                 logger.error("시간 초과. 스레드가 예상 시간 내에 처리되지 않음")
@@ -255,4 +268,9 @@ def main():
     
 #main 먼저 실행
 if __name__ == '__main__':
+
+    start_time = time.time() 
     main()
+    end_time = time.time()	
+    duration = end_time - start_time
+    print(f'프로그램 실행 시간: {duration}')
