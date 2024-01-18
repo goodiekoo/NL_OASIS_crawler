@@ -44,12 +44,12 @@ session.mount('http://', adapter)
 session.mount('https://', adapter)
 
 #크롤링 할 url, 최종버전에서는 입력받음
-url = 'https://www.nl.go.kr/oasis/contents/O2010000.do?page=1&pageUnit=1000&schM=search_list&schType=disa&schTab=list&schIsFa=ISU-000000000376&facetKind=01'
+#url = 'https://www.nl.go.kr/oasis/contents/O2010000.do?page=1&pageUnit=1000&schM=search_list&schType=disa&schTab=list&schIsFa=ISU-000000000376&facetKind=01'
 
 #xml 파싱용
 CDRW_url = 'https://www.nl.go.kr/oasis/common/mods_view_xml.do?contentsId='
-#cnts_df 저장경로
-savePath = r'/Users/user/Pictures/OASIS/'
+#cnts_df 저장경로 (없을경우 새로 생성)
+savePath = r'/Users/user/Pictures/CrawlingResults'
 #컬렉션 썸네일 필터용 키워드 (중복)
 word = "FILE-"
 
@@ -118,17 +118,12 @@ def fetchCDRWkey(site_url):
 def searchCDRW(KeyList):
     #CNTS를 key로 CDRW 값을 가져올 List 초기화
     CDRW_keys = list()
-
-    #xml 사이트 url 합체
-    #CDRW_siteUrl = [CDRW_url + key for key in KeyList]
-    #lambda-map으로 바꿈
     CDRW_siteUrl = list(map(lambda key: CDRW_url + key, KeyList))
 
     #ThreadPool병렬처리
     print("CDRW url 작업 완료, xml 크롤링 시작")
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = list(map(lambda site_url: executor.submit(fetchCDRWkey, site_url),CDRW_siteUrl))
-        #futures = [executor.submit(fetchCDRWkey, site_url) for site_url in CDRW_siteUrl]
     
     #결과 받아오기
     CDRW_keys= [future.result() for future in as_completed(futures) if future.result() is not None]
@@ -136,33 +131,28 @@ def searchCDRW(KeyList):
     return CDRW_keys
 
 #CNTS 수집
-def OASISCrawler(driver, CNTSkeyList):
+def OASISCrawler(url, driver, CNTSkeyList):
     driver.get(url)
     
-    #이동버튼 나올때까지 최대 20초 대기 (보통 맨 나중에 나옴)
-    WebDriverWait(driver, 20).until(
+    #이동버튼 나올때까지 최대 10초 대기 (보통 맨 나중에 나옴)
+    WebDriverWait(driver, 10).until(
         EC.presence_of_all_elements_located((By.CSS_SELECTOR,'#paging_btn_go_page'))
     )
     
-    #찾으려는 페이지 끝 번호 가져오는데 / 있어서 자르고 형변환 시킴, 두자리수까지 대응
-    TotalCount = int(driver.find_element(By.CLASS_NAME,'TotalCount').text[-2:])
+    TotalCount = int(driver.find_element(By.CLASS_NAME, 'TotalCount').get_attribute('data-total_page'))
     print('총 페이지 수: ', TotalCount)
 
 
     for i in range(1, TotalCount+1):
-        
         print(f"Step1. CNTS 크롤링 시작 - 페이지 {i}")
-        #타이틀 onclick에서 CNTS 값 가져옴
-        title_CNTS = driver.find_elements(By.CSS_SELECTOR, 'div > div.textBox > div.resultTitle > p > a')
-        #썸네일 가져옴
-        img_CNTS = driver.find_elements(By.CSS_SELECTOR,'div > div.imgBox > img')
-        
-        #배치처리
-        tmp_keys = [k.get_attribute('onclick').split("'")[3]for k in title_CNTS]
-        CNTSkeyList.extend(tmp_keys)
 
-        tmp_srcs = [x.get_attribute('src') for x in img_CNTS]
-        ThumbnailList.extend(tmp_srcs)
+        #타이틀 onclick에서 CNTS 값 가져옴
+        title_CNTS = [a.get_attribute('onclick').split("'")[3] for a in driver.find_elements(By.CSS_SELECTOR, 'div > div.textBox > div.resultTitle > p > a')]
+        #썸네일 가져옴
+        img_CNTS = [img.get_attribute('src') for img in driver.find_elements(By.CSS_SELECTOR, 'div > div.imgBox > img')]
+
+        CNTSkeyList.extend(title_CNTS)
+        ThumbnailList.extend(img_CNTS)
         
         #N초간 스크롤
         doScrollDown(driver, 5)
@@ -174,19 +164,18 @@ def OASISCrawler(driver, CNTSkeyList):
             break
 
         #다음 페이지 버튼을 찾음
-        next_btn = driver.find_element(By.CSS_SELECTOR, "p > a.btn-paging.next")
-        next_btn.click()
+        driver.find_element(By.CSS_SELECTOR, "p > a.btn-paging.next").click()
         print(f'{i}회차, 다음 페이지 이동')
         time.sleep(5)
 
     return CNTSkeyList
 
 #썸네일 리사이징 + CNTS 네이밍
-def download_and_process_img(args):
+def DownloadandProcessImg(args):
     link, cnts_key = args
     try:
-        with session.get(link, timeout=10) as res:
-            res.raise_for_status()  # Check if the request was successful
+        with session.get(link, timeout=3) as res:
+            res.raise_for_status()
             img_content = BytesIO(res.content)
             img = Image.open(img_content)
     
@@ -195,7 +184,7 @@ def download_and_process_img(args):
                 img = img.convert('RGB')
         
             resized_img = img.resize(target_size)
-            resized_img.save(savePath + f'{cnts_key}.jpg')
+            resized_img.save(os.path.join(savePath, f'{cnts_key}.jpg'))
             print(f"썸네일 {cnts_key} 다운 및 리사이징 성공 \n")
 
     except requests.RequestException as req_exc:
@@ -214,11 +203,12 @@ def downloadThumbnail(ImgList,CNTSkeyList):
     
     with ThreadPoolExecutor(max_workers=5) as executor:
         args_list = zip(ImgList, CNTSkeyList)
-        executor.map(lambda args: download_and_process_img(args), args_list)
+        executor.map(lambda args: DownloadandProcessImg(args), args_list)
 
 #main
 def main():
     try:
+        url = input("반드시 콘텐츠 목록에서 '더보기' 누른후 url 입력 : ")
         driver = SeleniumDriver()
         driver.setup()
     
@@ -231,7 +221,7 @@ def main():
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             #Step1. [MainThread] CNTS, Thumbnail src(global) 수집 
-            CNTS_key = executor.submit(OASISCrawler, driver.driver, CNTS_key)
+            CNTS_key = executor.submit(OASISCrawler, url, driver.driver, CNTS_key)
 
             try:
                 wait([CNTS_key],timeout=3)
@@ -260,7 +250,7 @@ def main():
     final_df = pd.DataFrame({'CNTS': CNTS_final, 'CDRW': CDRW_final})
     final_df.index = final_df.index + 1
     pd.melt(final_df)
-    final_df.to_csv(f'CNTS_df.csv', mode='w', encoding='utf-8-sig',header=True, index=True)
+    final_df.to_csv(os.path.join(savePath,f'NL_CrawlingResult.csv'), mode='w', encoding='utf-8-sig',header=True, index=True)
     print('Step4. csv까지 저장완료. 끝.')
     
     driver.teardown()
