@@ -20,11 +20,12 @@ OASIS 내 재난 아카이브, 컬렉션의 정보 수집:
 - Namespace로 웹 XML 파일 파싱
 
 
-### _Thumnail_filter.py
+### async_Thumnail_filter.py
 뉴스, 썸네일 없음 검출
 - Cosine 유사도를 통해 오류 이미지와 얼마나 유사한지 확인
-- 오류 썸네일은 Result 폴더에 복사
-- (추가예정) 유사한 썸네일 중복 검출기능
+- aiofiles, asyncio로 많은 이미지를 빠르게 처리
+- 오류 썸네일은 Result 폴더 생성 후 복사
+- (추후예정) 기능 check_test.py에 이식
 
 
 ## 개발환경
