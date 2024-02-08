@@ -4,7 +4,7 @@
 ## 프로젝트 소개
 https://www.nl.go.kr/oasis/
 
-### OASIS_tester.py (_py 폴더 내 위치)
+### OASIS_async.py (_py 폴더 내 위치)
 (1) OASIS 내 재난 아카이브, 컬렉션의 정보 수집:
 - 표준부호/번호 CNTS 코드 수집
 - CNTS 별 대응하는 CDRW 코드를 XML에서 파싱
