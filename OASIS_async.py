@@ -33,7 +33,7 @@ import asyncio
 import numpy as np
 
 #Warning msg 없앰
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+#requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 #ssl 인증 해제
 ssl._create_default_https_context = ssl._create_unverified_context
 #log 세팅
@@ -302,7 +302,7 @@ async def MoveErrorResult(savePath):
                 if item is not None and os.path.exists(file_to):
                     destination = os.path.join(file_to, os.path.basename(item))
                     print("썸네일 이동중:", item)
-                    shutil.copyfile(os.path.join(file_to, item), destination)
+                    shutil.copyfile(os.path.join(savePath, item), destination)
 
 async def CalcThumbnailScoreN(imgA, imgB, imgName):
     try:
@@ -312,7 +312,7 @@ async def CalcThumbnailScoreN(imgA, imgB, imgName):
             if CosineSimilarity(imgA, img) >= 1.0:
                 result.append(filename)
             else:
-                result.append("")
+                result.append(None)
         return result
     
     except Exception as e:
@@ -377,14 +377,21 @@ async def GetSimilarityScore(imgPath, numpyArr):
             NA_score = TaskScores[0]
             global NEWS_score #NEWS
             NEWS_score = TaskScores[1]
+
+            await asyncio.sleep(1)
+            await MoveErrorResult(savePath)
+
+            #for na, news in zip(NA_score, NEWS_score):
+            #    tmp = 
+            #    if i or j ==
             #global Dup_score #Dup
-            #Dup_score = TaskScores[2]
+            #Dup_array = NA_score + NEWS_score
 
             #print(NA_score)
             #print(NEWS_score)
             #print("##### 중복 썸네일 검사 결과 #####")
             #print(Dup_score)
-            print(f"결과: {len(NA_score)} | {len(NEWS_score)}" ) #| {len(Dup_score)}")
+            print(f"NA: {len(NA_score)} | NEWS: {len(NEWS_score)}" ) #| {len(Dup_score)}")
 
         except Exception as e:
             print(f"!!!오류발생!!!:{e}")        
@@ -413,6 +420,7 @@ async def main():
         #컬렉션 썸네일 필터 키워드
         word = "FILE-"
         #cnts_df 저장경로 (없을경우 새로 생성)
+        global savePath
         savePath = r'./CrawlingResults'
         #CDRW xml 파싱용 url
         CDRW_url = 'https://www.nl.go.kr/oasis/common/mods_view_xml.do?contentsId='
@@ -443,15 +451,9 @@ async def main():
         Task3_CDRWandThumbnails = await asyncio.gather(
            DownloadThumbnail(savePath, Thumbnail_List, CNTS_List), #[0]
            searchCDRW(CNTS_List,CDRW_url) #.result() 안써도 됨 [1] 
-        )
-
-
-    except Exception as e:
-        logger.exception(f"오류 발생!: {e}")
-
-    finally:
-        print("finally가 실행되었습니다")
+        )        
         Task4_CheckE = asyncio.create_task(CheckingExeptionsofThumbnail(savePath))
+        
         await asyncio.sleep(1)
 
         CDRW_List = Task3_CDRWandThumbnails[1]
@@ -464,6 +466,11 @@ async def main():
         print('.csv까지 저장완료. 크롤링 끝.')
 
         logger.info(f"CNTS: {len(CNTS_List)}, CDRW: {len(CDRW_List)}")
+
+
+    except Exception as e:
+        logger.exception(f"오류 발생!: {e}")
+
         
 if __name__ == '__main__':
     start_time = time.time() 
