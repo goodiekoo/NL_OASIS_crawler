@@ -11,12 +11,10 @@ from chromedriver_autoinstaller import install
 from PIL import Image
 from io import BytesIO
 from selenium.webdriver.support import expected_conditions as EC
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-from urllib3.exceptions import InsecureRequestWarning
 from lxml.html import fromstring
-from concurrent.futures import ThreadPoolExecutor, wait 
-from concurrent.futures import as_completed, TimeoutError
+from rich.console import Console
+from rich.progress import track
+from rich.theme import Theme
 import ssl 
 import logging
 import datetime
@@ -41,6 +39,20 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 #async 많은 파일 열 때 리미트 제한
 semaphore = asyncio.Semaphore(100)
+
+#CLI용 rich
+custom_theme = Theme({
+    "info": "dim cyan",
+    "m": "magenta",
+    "danger": "bold red",
+    "msg":"blink white underline on red1",
+    "b":"bold green"
+})
+
+console = Console(theme=custom_theme)
+
+#파일 부를 때 오류 방지 (절대경로)
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 #Selenium 로딩 최적화 CLASS
 class SeleniumDriver:
@@ -77,26 +89,27 @@ def DoScrollDown(driver, whileSeconds, sleep_duration=1):
 
     #스크롤 끝난거 확인
     try:
-        WebDriverWait(driver, 3).until(
+        WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.TAG_NAME, 'footer'))
         )
     except TimeoutException:
-        print("스크롤 시간초과. 일부 데이터가 누락되었을지도 모름")
+        console.print("스크롤 시간초과. 일부 데이터가 누락되었을지도 모름", style="danger")
 
 #OASIS Url 입력받아서 처리
 async def FetchUrls():
     try:
-        print("##### 국립중앙도서관 OASIS 웹사이트 유효성 검사 ##### ")
+        console.print("##### 국립중앙도서관 OASIS 웹사이트 유효성 검사 ##### ", style="msg")
         collectionKey = "schIsFa=ISU-"
-        rawUrl = input("\n!!!반드시 *콘텐츠 목록*에서 *더보기* 누른 후 url 입력(ctrl+c 후 우클릭)!!!: \n")
+        rawUrl = console.input("[msg]반드시 *콘텐츠 목록*에서 *더보기* 클릭 후 url 입력 (ctrl+c 후 우클릭) ⭣ ⭣ ⭣ \n")
     
         if rawUrl.find(collectionKey) != -1:
+            global collectionCode
             collectionCode = rawUrl.split('&')[5]
             goUrl = f"https://www.nl.go.kr/oasis/contents/O2010000.do?page=1&pageUnit=1000&schM=search_list&schType=disa&schTab=list&{collectionCode}&facetKind=01"
             return goUrl
 
         else:
-            print("!!!오류!!! OASIS *콘텐츠 목록*에서 *더보기* 누른 후 가져온 url이 맞나요? 프로그램을 다시 시작해주세요.")
+            console.print("!!!오류!!! OASIS *콘텐츠 목록*에서 *더보기* 누른 후 가져온 url이 맞나요? 프로그램을 다시 시작해주세요.", style="danger")
             await asyncio.sleep(5)
             exit(0)                
     
@@ -117,11 +130,9 @@ async def FetchCNTS(url):
     )
     
     TotalCount = int(driver.driver.find_element(By.CLASS_NAME, 'TotalCount').get_attribute('data-total_page'))
-    print('총 페이지 수: ', TotalCount)
-
 
     for i in range(1, TotalCount+1):
-        print(f"{i}/{TotalCount} pages 내 CNTS 크롤링 중...")
+        console.print(f"{i}/{TotalCount} pages 내 CNTS 크롤링 중...", style="b")
 
         #타이틀 onclick에서 CNTS 값 가져옴
         title_CNTS = [a.get_attribute('onclick').split("'")[3] for a in driver.driver.find_elements(By.CSS_SELECTOR, 'div > div.textBox > div.resultTitle > p > a')]
@@ -132,18 +143,19 @@ async def FetchCNTS(url):
         Thumbnail_List.extend(img_CNTS)
         
         #N초간 스크롤
-        DoScrollDown(driver.driver, 2)
+        with console.status(f"[b]{i}/{TotalCount} pages 내 CNTS 크롤링 중...", spinner="point"):
+            DoScrollDown(driver.driver, 2)
 
         #마지막 페이지까지 수집하고 루프 종료
         if i == TotalCount:
-            print(f"CNTS: {len(CNTSkeyList)}, 썸네일 src: {len(Thumbnail_List)} 종 크롤링 완료. 브라우저가 닫힙니다.")
+            console.print(f"CNTS: {len(CNTSkeyList)}, 썸네일 src: {len(Thumbnail_List)} 종 크롤링 완료. 브라우저가 닫힙니다.",style="b")
             await asyncio.sleep(1)
             driver.teardown()
             break
 
         #다음 페이지 버튼을 찾음
         driver.driver.find_element(By.CSS_SELECTOR, "p > a.btn-paging.next").click()
-        print(f'{i}/{TotalCount} 페이지 완료, 다음 페이지로 이동합니다...')
+        console.print(f'[b]{i}/{TotalCount} 페이지 작업 완료, 다음 페이지로 이동합니다.')        
         time.sleep(2)
 
     return CNTSkeyList
@@ -164,11 +176,11 @@ async def fetchCDRWkey(session, site_url):
             if record_identifier_element is not None:
                 return record_identifier_element.text
             else:
-                print(f"!!!오류!!!해당 XML에서 CDRW을 찾을 수 없습니다: {site_url}")
+                console.print(f"!!!오류!!!해당 XML에서 CDRW을 찾을 수 없습니다: {site_url}", style="danger")
                 return ""
             
     except (requests.RequestException, ET.ParseError) as e :
-        print(f"!!!오류발생!!!: {e}")
+        console.print(f"!!!오류발생!!!: {e}", style="danger")
         return ""
 
 #CNTS 값 토대로 CDRW 웹 xml url 생성 처리 
@@ -177,18 +189,18 @@ async def searchCDRW(KeyList, CDRWUrl):
     #대기
     await asyncio.sleep(1)
     try:
-        print("개별 xml마다 CDRW 추출을 위해 url 생성을 시작합니다...")
+        console.print("[b]CDRW 추출작업을 시작합니다.", style="b")
         #CNTS를 key로 CDRW 값을 가져올 List 초기화
         CDRW_keys = list()
         CDRW_siteUrl = list(map(lambda key: CDRWUrl + key, KeyList))
-        print(f"CDRW url {len(CDRW_siteUrl)} 개 작업 완료, CDRW 키를 추출합니다...")
+        #print(f"CDRW url {len(CDRW_siteUrl)} 개 작업 완료, CDRW 키를 추출합니다...")
 
         async with aiohttp.ClientSession() as session:
             futures = [asyncio.ensure_future(fetchCDRWkey(session, site_url)) for site_url in CDRW_siteUrl]
             #CDRW 결과값 받아옴
             CDRW_keys = await asyncio.gather(*futures)
         
-        print(f"CDRW: {len(CDRW_keys)}, 크롤링 완료")
+        console.print(f"CDRW: {len(CDRW_keys)}, 크롤링 완료.",style="b")
         return CDRW_keys
   
     except Exception as e:
@@ -211,7 +223,7 @@ async def FetchThumbnail(session, src_urls, target_size):
             return resized_img
 
     except Exception as e:
-        print(f"!!!오류발생!!!: 썸네일 {e}")
+        console.print(f"!!!오류발생!!!: 썸네일 {e}", style="danger")
 
 #src키로 썸네일(140*95) 다운로드(파일명 CNTS)
 async def DownloadThumbnail(savePath, ImgList, CNTSkeyList):
@@ -220,33 +232,32 @@ async def DownloadThumbnail(savePath, ImgList, CNTSkeyList):
     #대기
     await asyncio.sleep(1) 
     try:
-        print(f"컬렉션 썸네일 제거 후 총: {len(ImgList)}, CNTS 네이밍 및 다운로드 중...")
-        ImgDownloadList = list()
+        with console.status(f"[b]총 썸네일: {len(ImgList)}, CNTS 네이밍 및 다운로드 중...", spinner="point"):   
+            ImgDownloadList = list()
 
-        #폴더 없으면 생성
-        if not os.path.exists(savePath):
-            os.mkdir(savePath)
+            #폴더 없으면 생성
+            if not os.path.exists(savePath):
+                os.mkdir(savePath)
 
-        async with aiohttp.ClientSession() as session:
-            futures = [
-                FetchThumbnail(session, srcUrls, target_size)
-                for srcUrls in ImgList
-            ]
-
-            #이미지 결과값 받아옴
-            ImgDownloadList = await asyncio.gather(*futures)
+            async with aiohttp.ClientSession() as session:
+                futures = [
+                    FetchThumbnail(session, srcUrls, target_size)
+                    for srcUrls in ImgList
+                ]
+                #이미지 결과값 받아옴
+                ImgDownloadList = await asyncio.gather(*futures)
         
-        #다운로드
-        for file, name in zip(ImgDownloadList, CNTSkeyList):
-            try:
-                file.save(os.path.join(savePath, f'{name}.jpg'))
-                cnt += 1
-                print(f"{cnt}번 썸네일: {name} 다운로드 완료. \n")
-            except Exception as e:
-                print(f"!!!오류발생!!!: {name}: {e}")
+            #다운로드
+            for file, name in zip(ImgDownloadList, CNTSkeyList):
+                try:
+                    file.save(os.path.join(savePath, f'{name}.jpg'))
+                    cnt += 1
+                    console.print(f"{cnt}번 썸네일: {name} 다운로드 완료. \n", style="info")
+                except Exception as e:
+                    console.print(f"!!!오류발생!!!: {name}: {e}", style="danger")
 
     except Exception as e:
-        print(f"!!!오류발생!!!: {e}")
+        console.print(f"!!!오류발생!!!: {e}",style="danger")
 
 #Cosine 유사도로 썸네일 오류 검출
 def CosineSimilarity(img1, img2):
@@ -287,11 +298,11 @@ async def AsyncLoadThumbnail(path):
                 imgarray = np.array(Image.open(io.BytesIO(imgData)))
                 return imgarray
     except Exception as e:
-        print(f"썸네일 로딩중 오류 발생 : {e}")
+        console.print(f"!!!오류!!! 썸네일 로딩 불가 : {e}", style="danger")
 
 async def MoveErrorResult(savePath):
     #썸네일 오류만 한 폴더에 몰아넣기
-    file_to = r'./ThumbnailsErrorResult'
+    file_to = r'./ThumbnailErrors'
     #Result 폴더가 없으면 만들고
     if not os.path.exists(file_to):
         os.makedirs(file_to)
@@ -301,7 +312,7 @@ async def MoveErrorResult(savePath):
             for item in (na, news):
                 if item is not None and os.path.exists(file_to):
                     destination = os.path.join(file_to, os.path.basename(item))
-                    print("썸네일 이동중:", item)
+                    console.print(f"오류 썸네일: {item} 이동",style="m")
                     shutil.copyfile(os.path.join(savePath, item), destination)
 
 async def CalcThumbnailScoreN(imgA, imgB, imgName):
@@ -316,39 +327,35 @@ async def CalcThumbnailScoreN(imgA, imgB, imgName):
         return result
     
     except Exception as e:
-        print(f"!!!N/A, NEWS 오류 검색중 오류발생!!! {e}")
+        console.print(f"!!!N/A, NEWS 오류 검색중 오류발생!!! {e}", style="danger")
 
 #중복 검사 오류 있음
 async def CalcThumbnailScoreDup(imgA, imgB, imgName):
     try:
         result = list()
-        highscore = list()
         for img1, filename1 in zip(imgB, imgName):
-            #match_found = False
+            dup_found = False
+            score = list()
             for img2, filename2 in zip(imgA, imgName):
                 #이름 동일한 중복 이미지일 경우 스킵
                 if filename1 == filename2:
+                    dup_found = True
                     continue
-                    
                 if CosineSimilarity(img1, img2) >= 1.0:
-                    highscore.append(filename2)
-                    #match_found = True
-                    break
+                    score.append(filename2)
 
-                #if not match_found:
-                    #result.append(None)
+            if not dup_found:
+                result.append(None)
 
-            result.append(highscore)
-            highscore.clear()
+            result.append(len(score))
+            score.clear()
         return result
     except Exception as e:
-        print(f"!!!오류발생!!! {e}")
-
+        console.print(f"!!!오류발생!!! {e}",style="danger")
         
 async def GetSimilarityScore(imgPath, numpyArr):
         await asyncio.sleep(1)
         try:
-            
             #필터 기준 NA: 썸네일 없음, NEWS: 뉴스 썸네일
             ImgNA_path = r'./NA.jpg'
             ImgNEWS_path = r'./NEWS.jpg'
@@ -362,14 +369,15 @@ async def GetSimilarityScore(imgPath, numpyArr):
             #썸네일 파일명 수집
             imgName = list(map(os.path.basename, imgPath))
             #중복 검출용
-            #Dup_array = numpyArr
+            Dup_array = list(reversed(numpyArr))
             
-            print("썸네일 오류 검사 시작")
+            #with console.status("[m]웹 사이트 별 썸네일 오류 검사를 시작합니다.", spinner="point"):
+            #console.print("[m]웹 사이트 별 썸네일 오류 검사를 시작합니다.")
             TaskScores = await asyncio.gather(
-                CalcThumbnailScoreN(NA_array,numpyArr,imgName),
-                CalcThumbnailScoreN(NEWS_array,numpyArr,imgName)
-                #,CalcThumbnailScoreDup(Dup_array,numpyArr,imgName)
-            )
+                        CalcThumbnailScoreN(NA_array,numpyArr,imgName),
+                        CalcThumbnailScoreN(NEWS_array,numpyArr,imgName),
+                        CalcThumbnailScoreDup(Dup_array,numpyArr,imgName)
+                )
 
             await asyncio.sleep(1)
 
@@ -377,43 +385,74 @@ async def GetSimilarityScore(imgPath, numpyArr):
             NA_score = TaskScores[0]
             global NEWS_score #NEWS
             NEWS_score = TaskScores[1]
+            global Dup_score
+            Dup_score = TaskScores[2]
 
-            await asyncio.sleep(1)
+            #NA와 NEWS 오류 리스트를 합쳐서 중복 검사할 썸네일 리스트 작성
+            #all_error_list = [(x if x is not None else y) for x, y in zip(NA_score, NEWS_score)]
+            #Dup_list = [x if y is None else None for x, y in zip(imgName, all_error_list)]
+             
+            #await CalcThumbnailScoreDup(Dup_array,numpyArr,imgName)
+            #print(Dup_array)
+            #print(len(Dup_array))            
+
             await MoveErrorResult(savePath)
-
-            #for na, news in zip(NA_score, NEWS_score):
-            #    tmp = 
-            #    if i or j ==
-            #global Dup_score #Dup
-            #Dup_array = NA_score + NEWS_score
 
             #print(NA_score)
             #print(NEWS_score)
             #print("##### 중복 썸네일 검사 결과 #####")
             #print(Dup_score)
-            print(f"NA: {len(NA_score)} | NEWS: {len(NEWS_score)}" ) #| {len(Dup_score)}")
+            console.print(f"[b]검사 완료 - NA: {len(NA_score)} | NEWS: {len(NEWS_score)} | Dup: {len(Dup_score)}")
 
         except Exception as e:
-            print(f"!!!오류발생!!!:{e}")        
+            console.print(f"!!!오류발생!!!:{e}", style="danger")        
     
 
 async def CheckingExeptionsofThumbnail(savePath):
     try:
-        imgPath = await LoadThumbnailPath(savePath)
-        print("썸네일오류: 디렉토리 수집 완료")
+        with console.status("[m]웹 사이트 별 썸네일 오류 검사를 시작합니다.", spinner="point"):
+            imgPath = await LoadThumbnailPath(savePath)
+            #print("오류 썸네일 검출: 썸네일 파일 경로 수집 완료.")
         
-        imgArray = await LoadThumbnailImg(imgPath)
-        print("썸네일오류: NUMpyArry 변환완료")
+            imgArray = await LoadThumbnailImg(imgPath)
+            #print("썸네일오류: NUMpyArry 변환완료")
 
-        await asyncio.sleep(1)
+            await asyncio.sleep(1)
 
-        await GetSimilarityScore(imgPath, imgArray)
+            await GetSimilarityScore(imgPath, imgArray)
         
     except Exception as e:
-        print(f"!!!오류발생!!!:{e}")
-    
-    #finally:
-    #    await MoveErrorResult(savePath)
+        console.print(f"!!!오류발생!!!:{e}",style="danger")  
+
+async def SavetoResults(CNTS_List, CDRW_List):
+        final_df = pd.DataFrame({
+                'CNTS': CNTS_List, 'CDRW': CDRW_List, 
+                'N/A': NA_score, 
+                'NEWS': NEWS_score, 
+                'Dup': Dup_score
+            })
+        final_df.index = final_df.index + 1
+        pd.melt(final_df)
+
+        def draw_color_MAX(x,color):
+            color = color = f'background-color:{color}'
+            is_max = x > 5
+            return [color if b else '' for b in is_max] 
+        
+        #final_df.style.apply(draw_color_MAX, color='#ff9090',subset=['Dup'],axis=0)
+        #final_df.style.highlight_max(axis=0, color="yellow")
+        final_df.info()
+
+        #.xlsx 저장
+        excel_file_path = os.path.join(savePath, 'NL_CrawlingResult.xlsx')
+        with pd.ExcelWriter(excel_file_path, engine='openpyxl') as writer:
+            final_df.style.apply(
+                draw_color_MAX, color='#ff9090',subset=['Dup'],axis=0).to_excel(
+                    writer, index=True, header=True)
+        
+        #final_df.to_excel(os.path.join(savePath,f'NL_CrawlingResult.xlsx'), index=True, header=True, encoding='utf-8-sig')
+        #logger.info(f"CNTS: {len(CNTS_List)}, CDRW: {len(CDRW_List)}")
+
 
 async def main():
     try:
@@ -453,19 +492,15 @@ async def main():
            searchCDRW(CNTS_List,CDRW_url) #.result() 안써도 됨 [1] 
         )        
         Task4_CheckE = asyncio.create_task(CheckingExeptionsofThumbnail(savePath))
-        
         await asyncio.sleep(1)
 
         CDRW_List = Task3_CDRWandThumbnails[1]
         await Task4_CheckE
 
-        final_df = pd.DataFrame({'CNTS': CNTS_List, 'CDRW': CDRW_List, 'N/A': NA_score, 'NEWS': NEWS_score})
-        final_df.index = final_df.index + 1
-        pd.melt(final_df)
-        final_df.to_csv(os.path.join(savePath,f'NL_CrawlingResult.csv'), mode='w', encoding='utf-8-sig',header=True, index=True)
-        print('.csv까지 저장완료. 크롤링 끝.')
+        Task5_SaveE = asyncio.create_task(SavetoResults(CNTS_List, CDRW_List))
+        await Task5_SaveE
 
-        logger.info(f"CNTS: {len(CNTS_List)}, CDRW: {len(CDRW_List)}")
+        console.print('#####크롤링 결과 .xlsx 저장 완료. 프로그램을 재시작할 때는 반드시 결과 폴더를 삭제해주세요.#####', style="msg")
 
 
     except Exception as e:
@@ -475,4 +510,4 @@ async def main():
 if __name__ == '__main__':
     start_time = time.time() 
     asyncio.run(main())
-    print(f'프로그램 실행 시간: {time.time()-start_time}')
+    console.print(f'프로그램 실행 시간: {time.time()-start_time}',style="info")
