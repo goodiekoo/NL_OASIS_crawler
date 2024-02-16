@@ -102,7 +102,7 @@ async def FetchUrls():
         console.clear(home=True)
         console.print(Panel("[sys]주제·이슈 컬렉션, 재난 아카이브 점검 크롤러[/sys]", title="국립중앙도서관-OASIS", title_align="right"))
         collectionKey = "schIsFa=ISU-"
-        rawUrl = console.input("[msg]반드시 *콘텐츠 목록*에서 *더보기* 클릭 후 url 입력 (ctrl+c 후 우클릭) ⭣ ⭣ ⭣ \n")
+        rawUrl = console.input("[msg] ⭣ ⭣ ⭣ 반드시 *콘텐츠 목록*에서 *더보기* 클릭 후 url 입력 (ctrl+c 후 우클릭) ⭣ ⭣ ⭣ \n")
     
         if rawUrl.find(collectionKey) != -1:
             global collectionCode
@@ -337,17 +337,16 @@ async def MoveErrorResult(savePath):
                     console.print(f"오류 썸네일: {item} 이동",style="m")
                     shutil.copyfile(os.path.join(savePath, item), destination)
 
-async def CalcThumbnailScoreN(imgA, imgB, imgName, progress, task):
+async def CalcThumbnailScoreN(imgA, imgB, imgName):
     try:
         result = list(map(lambda x: x[1] if CosineSimilarity(imgA, x[0]) >= 1.0 else None, zip(imgB, imgName)))
-        progress.update(task, advance=1, message=f"[cyan]{task.description} - {task.completed}/{task.total} 검증 완료")
         return result
     
     except Exception as e:
         console.print(f"!!!N/A, NEWS 오류 검색중 오류발생!!! {e}", style="danger")
 
 #중복 검사 오류 있음
-async def CalcThumbnailScoreDup(imgA, imgB, imgName, progress, task):
+async def CalcThumbnailScoreDup(imgA, imgB, imgName):
     try:
         result = list()
         for img1, filename1 in zip(imgB, imgName):
@@ -357,7 +356,6 @@ async def CalcThumbnailScoreDup(imgA, imgB, imgName, progress, task):
             else:
                 score = [filename2 for img2, filename2 in zip(imgA, imgName) if CosineSimilarity(img1, img2) >= 1.0]
                 result.append(len(score))
-            progress.update(task, advance=1, message=f"[cyan]{task.description} - {task.completed}/{task.total} 검증 완료")
         return result
     except Exception as e:
         console.print(f"!!!오류발생!!! {e}",style="danger")
@@ -365,10 +363,10 @@ async def CalcThumbnailScoreDup(imgA, imgB, imgName, progress, task):
     
 async def CheckingExeptionsofThumbnail(savePath):
     try:
-        task_description = f"<{CollectionTitle}>의 썸네일 오류 검사중..."
-        with Progress() as progress:
-            task = progress.add_task("[cyan]{task_description}", total=100, start=False)
-        #with console.status(f"[m]<{CollectionTitle}>의 썸네일 오류 검사중...", spinner="point"):
+        #task_description = f"<{CollectionTitle}>의 썸네일 오류 검사중..."
+        #with Progress() as progress:
+        #    task = progress.add_task("[cyan]{task_description}", total=100, start=False)
+        with console.status(f"[m]<{CollectionTitle}>의 썸네일 오류 검사중...", spinner="point"):
             imgPath = await LoadThumbnailPath(savePath)
             #print("오류 썸네일 검출: 썸네일 파일 경로 수집 완료.")
         
@@ -377,12 +375,12 @@ async def CheckingExeptionsofThumbnail(savePath):
 
             await asyncio.sleep(1)
 
-            await GetSimilarityScore(imgPath, imgArray, progress, task)
+            await GetSimilarityScore(imgPath, imgArray)
         
     except Exception as e:
         console.print(f"!!!오류발생!!!:{e}",style="danger") 
 
-async def GetSimilarityScore(imgPath, numpyArr, progress, task):
+async def GetSimilarityScore(imgPath, numpyArr):
         try:
             #필터 기준 NA: 썸네일 없음, NEWS: 뉴스 썸네일
             ImgNA_path = r'./NA.jpg'
@@ -397,14 +395,11 @@ async def GetSimilarityScore(imgPath, numpyArr, progress, task):
             imgName = list(map(os.path.basename, imgPath))
             #중복 검출용
             Dup_array = list(reversed(numpyArr))
-            
-            total_tasks = 3
-            progress.update(task, total=total_tasks)
 
             TaskScores = await asyncio.gather(
-                        CalcThumbnailScoreN(NA_array,numpyArr,imgName,progress,task),
-                        CalcThumbnailScoreN(NEWS_array,numpyArr,imgName,progress,task),
-                        CalcThumbnailScoreDup(Dup_array,numpyArr,imgName,progress,task)
+                        CalcThumbnailScoreN(NA_array,numpyArr,imgName),
+                        CalcThumbnailScoreN(NEWS_array,numpyArr,imgName),
+                        CalcThumbnailScoreDup(Dup_array,numpyArr,imgName)
                     )
 
             await asyncio.sleep(1)
