@@ -16,18 +16,16 @@ https://www.nl.go.kr/oasis/
 - Cosine 유사도를 통해 오류 이미지와 얼마나 유사한지 확인
 - aiofiles, asyncio로 많은 이미지를 빠르게 처리
 - 오류 썸네일은 Result 폴더 생성 후 복사
-- (추후예정) 중복 의심 썸네일 검출
+- 중복 의심 썸네일 검출 (5개 이상 발견 시 셀 색상 처리)
 
 #### 특징
 - Selenium: OASIS 웹사이트 CNTS, CDRW(XML), 썸네일 크롤링 
 - Pillow: 썸네일 이미지 리사이징(140*95px)
-- ThreadPoolExecutor: 병렬 처리로 크롤링 속도 향상 
+- Asyncio, Asynchttp: 비동기 처리로 크롤링 및 많은 파일 처리 속도 대폭 향상 
 - Pandas DataFrame: 크롤링 결과 csv 저장
-- Namespace로 웹 XML 파일 파싱
-
 
 ## 개발환경
-- Python 3.12(64 bit)
+- Python 3.10(64 bit)
 - Chrome WebDriver (120.0.6099.109 기준)
 - IDE: VS code 1.85.1
 
