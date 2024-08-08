@@ -2,8 +2,7 @@
 National Library of Korea OASIS Website Data Validation Crawler
 
 ## Project Overview
-https://www.nl.go.kr/oasis/
-This project is a Python-based crawler designed to automatically collect and validate disaster archive and collection information from the OASIS website of the National Library of Korea.
+This project is a Python-based crawler designed to automatically collect and validate disaster archive and collection information from the OASIS website of the National Library of Korea(https://www.nl.go.kr/oasis/).
 
 
 ### Key Features
