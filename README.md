@@ -1,31 +1,33 @@
 # Python Selenium-Project-NL_OASIS_crawler
-국립중앙도서관 OASIS 웹사이트 데이터 점검 크롤러 
+National Library of Korea OASIS Website Data Validation Crawler
 
-## 프로젝트 소개
+## Project Overview
 https://www.nl.go.kr/oasis/
+This project is a Python-based crawler designed to automatically collect and validate disaster archive and collection information from the OASIS website of the National Library of Korea.
 
-### OASIS_async.py (_py 폴더 내 위치)
-(1) OASIS 내 재난 아카이브, 컬렉션의 정보 수집:
-- 표준부호/번호 CNTS 코드 수집
-- CNTS 별 대응하는 CDRW 코드를 XML에서 파싱
-- 웹사이트 별 썸네일 수집 후 CNTS 코드로 네이밍
-- 오류 확인용 썸네일 다운로드 (용량문제로 이미지 리사이징 처리)
-- 최종 CNTS, CDRW, 썸네일 오류 리스트 csv 파일로 저장
 
-(2) 수집된 썸네일의 뉴스, 오류 검출
-- Cosine 유사도를 통해 오류 이미지와 얼마나 유사한지 확인
-- aiofiles, asyncio로 많은 이미지를 빠르게 처리
-- 오류 썸네일은 Result 폴더 생성 후 복사
-- 중복 의심 썸네일 검출 (5개 이상 발견 시 셀 색상 처리)
+### Key Features
+1. Data Collection (OASIS_async.py)
+- Collect CNTS Codes: Gathers CNTS (standard number) codes from disaster archives and collections within OASIS.
+- Parse CDRW Codes: Extracts CDRW codes corresponding to CNTS from XML files.
+- Collect and Rename Thumbnails: Downloads thumbnail images from the website and renames them using the CNTS codes.
+- Download Thumbnails for Error Checking: Resizes images to manage file size, then downloads thumbnails for error detection.
+- Save Error Lists: Saves the final lists of CNTS, CDRW, and thumbnail errors into CSV files.
 
-#### 특징
-- Selenium: OASIS 웹사이트 CNTS, CDRW(XML), 썸네일 크롤링 
-- Pillow: 썸네일 이미지 리사이징(140*95px)
-- Asyncio, Asynchttp: 비동기 처리로 크롤링 및 많은 파일 처리 속도 대폭 향상 
-- Pandas DataFrame: 크롤링 결과 csv 저장
+2. Error Detection and Analysis
+- Detect Image Similarity: Uses Cosine similarity to detect how closely thumbnails resemble known error images.
+- Speed Up Image Processing with Asynchronous Techniques: Utilizes aiofiles and asyncio for rapid processing of large numbers of images.
+- Manage Error Thumbnails: Copies detected error thumbnails into a dedicated Result folder.
+- Detect Suspected Duplicate Thumbnails: Identifies suspected duplicate thumbnails and highlights cells if more than 5 duplicates are found.
 
-## 개발환경
+#### Key Technologies Used
+- Selenium: Crawls CNTS codes, CDRW (XML), and thumbnails from the OASIS website.
+- Pillow: Resizes collected thumbnail images to 140x95px.
+- Asyncio, Asynchttp: Enhances crawling and processing speed for large files using asynchronous processing.
+- Pandas DataFrame: Saves crawling results into CSV files.
+
+## Development Environment
 - Python 3.10(64 bit)
-- Chrome WebDriver (120.0.6099.109 기준)
+- Chrome WebDriver (120.0.6099.109)
 - IDE: VS code 1.85.1
 
